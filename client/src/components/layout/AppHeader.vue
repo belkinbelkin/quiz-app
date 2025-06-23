@@ -1,0 +1,142 @@
+<template>
+    <header class="app_header" v-if="userStore.isLoggedIn && !$route.meta.hideHeader">
+      <div class="header_content">
+        <div class="header_left">
+          <div class="logo_section">
+            <span class="brand_name">BrainPOP Quiz</span>
+          </div>
+        </div>
+        
+        <div class="header_right">
+          <div class="user_section">
+            <span class="user_email">{{ userStore.currentUser?.email || 'User' }}</span>
+            <button 
+              class="logout_button"
+              @click="handleLogout"
+              :disabled="loggingOut"
+            >
+              {{ loggingOut ? 'Logging out...' : 'Logout' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  </template>
+  
+  <script>
+  import { useUserStore } from '@/stores/user'
+  
+  export default {
+    name: 'AppHeader',
+    data() {
+      return {
+        loggingOut: false
+      }
+    },
+    setup() {
+      const userStore = useUserStore()
+      return { userStore }
+    },
+    methods: {
+      handleLogout() {
+        this.loggingOut = true
+        console.log('Logging out!')
+        // Clear user state
+        this.userStore.logout()
+        
+        // Simple page reload to login - most reliable method
+        setTimeout(() => {
+          window.location.href = '/login'
+        }, 300)
+      }
+    }
+  }
+  </script>
+  
+  <style lang="scss" scoped>
+  .app_header {
+    background: #5a9b8e;
+    color: white;
+    padding: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .header_content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 2rem;
+  }
+  
+  .header_left {
+    .logo_section {
+      .brand_name {
+        font-size: 1.5rem;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+      }
+    }
+  }
+  
+  .header_right {
+    .user_section {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      
+      .user_email {
+        font-size: 0.9rem;
+        opacity: 0.9;
+      }
+      
+      .logout_button {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s ease;
+        
+        &:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.3);
+          border-color: rgba(255, 255, 255, 0.5);
+        }
+        
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .header_content {
+      padding: 0.75rem 1rem;
+      
+      .header_left .brand_name {
+        font-size: 1.2rem;
+      }
+      
+      .header_right .user_section {
+        gap: 0.5rem;
+        
+        .user_email {
+          display: none; // Hide email on mobile
+        }
+        
+        .logout_button {
+          padding: 0.4rem 0.8rem;
+          font-size: 0.8rem;
+        }
+      }
+    }
+  }
+  </style>

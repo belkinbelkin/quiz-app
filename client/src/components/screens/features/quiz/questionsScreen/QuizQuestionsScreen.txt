@@ -1,0 +1,349 @@
+<template>
+  <div class="questions_container">
+    <BackgroundWave />
+    
+    <!-- Header -->
+    <div class="quiz_header">
+      <div class="breadcrumb">
+        <span class="brand">BrainPOP</span>
+        <span class="separator">/</span>
+        <span class="topic">{{ quiz?.topic || 'Loading...' }}</span>
+        <span class="separator">/</span>
+        <span class="current">Quiz</span>
+      </div>
+    </div>
+
+    <!-- Question Content -->
+    <div v-if="currentQuestion" class="question_content">
+      <div class="question_header">
+        <h2 class="question_number">{{ currentQuestion.question_order }}</h2>
+        <h3 class="question_text">{{ currentQuestion.question_text }}</h3>
+      </div>
+
+      <div class="options_container">
+        <div 
+          v-for="option in currentQuestion.options" 
+          :key="option.id"
+          class="option"
+          :class="{ 'selected': selectedAnswers[currentQuestion.id] === option.id }"
+          @click="selectAnswer(option.id)"
+        >
+          <span class="option_letter">{{ option.option_letter }}</span>
+          <span class="option_text">{{ option.option_text }}</span>
+        </div>
+      </div>
+
+      <!-- Navigation Buttons -->
+      <div class="navigation_buttons">
+        <button 
+          v-if="currentQuestionIndex > 0" 
+          @click="goToPreviousQuestion"
+          class="nav_button back_button"
+        >
+          Back
+        </button>
+        
+        <button 
+          v-if="currentQuestionIndex < questions.length - 1"
+          @click="goToNextQuestion"
+          :disabled="!selectedAnswers[currentQuestion.id]"
+          class="nav_button next_button"
+        >
+          Next
+        </button>
+        
+        <button 
+          v-if="currentQuestionIndex === questions.length - 1"
+          @click="submitQuiz"
+          :disabled="!canSubmit || loading"
+          class="nav_button submit_button"
+        >
+          {{ loading ? 'Submitting...' : 'Submit' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div v-else-if="loading" class="loading">
+      <p>Loading question...</p>
+    </div>
+  </div>
+</template>
+
+<script>
+import BackgroundWave from '@/components/base/backgrounds/wave/BackgroundWave.vue'
+import { useUserStore } from '@/stores/user'
+
+export default {
+  name: 'QuizQuestionsScreen',
+  components: { BackgroundWave },
+  props: {
+    quiz: Object,
+    attemptId: [String, Number],
+    currentQuestionIndex: {
+      type: Number,
+      default: 0
+    }
+  },
+  emits: ['complete', 'next', 'previous'],
+  data() {
+    return {
+      selectedAnswers: {},
+      loading: false
+    }
+  },
+  computed: {
+    questions() {
+      return this.quiz?.questions || []
+    },
+    currentQuestion() {
+      return this.questions[this.currentQuestionIndex] || null
+    },
+    canSubmit() {
+      // If we're on the last question and it's answered, we can submit
+      return this.selectedAnswers[this.currentQuestion?.id]
+    }
+  },
+  methods: {
+    async selectAnswer(optionId) {
+      // Update UI immediately
+      this.selectedAnswers[this.currentQuestion.id] = optionId
+
+      // Submit to backend
+      try {
+        await this.apiCall(`/api/quiz-attempt/${this.attemptId}/answer`, 'POST', {
+          question_id: this.currentQuestion.id,
+          selected_option_id: optionId
+        })
+      } catch (err) {
+        console.error('Error submitting answer:', err)
+        // Could show a toast notification here
+      }
+    },
+
+    goToNextQuestion() {
+      this.$emit('next')
+    },
+
+    goToPreviousQuestion() {
+      this.$emit('previous')
+    },
+
+    async submitQuiz() {
+      this.loading = true
+
+      try {
+        // Complete the quiz
+        await this.apiCall(`/api/quiz-attempt/${this.attemptId}/complete`, 'POST')
+        
+        // Emit completion event to parent
+        this.$emit('complete', this.attemptId)
+      } catch (err) {
+        console.error('Error submitting quiz:', err)
+        // Handle error - maybe show a message
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async apiCall(endpoint, method = 'GET', data = null) {
+      const token = localStorage.getItem('auth_token')
+      
+      const options = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      }
+
+      if (data) {
+        options.body = JSON.stringify(data)
+      }
+
+      const response = await fetch(`http://localhost:3000${endpoint}`, options)
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Token expired, redirect to login
+          const userStore = useUserStore()
+          userStore.logout()
+          this.$router.push('/login')
+          throw new Error('Authentication expired')
+        }
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      return await response.json()
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.questions_container {
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f5f5;
+  position: relative;
+}
+
+.quiz_header {
+  background: #5a9b8e;
+  padding: 15px 20px;
+  color: white;
+  position: relative;
+  z-index: 10;
+
+  .breadcrumb {
+    font-size: 16px;
+    
+    .brand {
+      font-weight: bold;
+    }
+    
+    .separator {
+      margin: 0 10px;
+    }
+  }
+}
+
+.question_content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px 40px;
+  position: relative;
+  z-index: 10;
+  max-width: 800px;
+  margin: 0 auto;
+  
+  .question_header {
+    text-align: center;
+    margin-bottom: 40px;
+    
+    .question_number {
+      font-size: 64px;
+      margin: 0;
+      color: #333;
+      font-weight: bold;
+    }
+    
+    .question_text {
+      font-size: 24px;
+      margin: 15px 0 0 0;
+      color: #666;
+      font-weight: normal;
+    }
+  }
+  
+  .options_container {
+    width: 100%;
+    margin-bottom: 40px;
+    
+    .option {
+      border: 2px solid #ddd;
+      border-radius: 12px;
+      padding: 20px 25px;
+      margin-bottom: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: all 0.2s;
+      background: white;
+      
+      &:hover {
+        border-color: #5a9b8e;
+        box-shadow: 0 2px 8px rgba(90, 155, 142, 0.1);
+      }
+      
+      &.selected {
+        border-color: #5a9b8e;
+        background: #f0f8f6;
+        box-shadow: 0 2px 12px rgba(90, 155, 142, 0.2);
+      }
+      
+      .option_letter {
+        background: #f8f9fa;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 20px;
+        font-weight: bold;
+        font-size: 16px;
+        color: #333;
+        border: 2px solid #e9ecef;
+      }
+      
+      &.selected .option_letter {
+        background: #5a9b8e;
+        color: white;
+        border-color: #5a9b8e;
+      }
+      
+      .option_text {
+        font-size: 18px;
+        color: #333;
+        line-height: 1.4;
+      }
+    }
+  }
+  
+  .navigation_buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+    width: 100%;
+    
+    .nav_button {
+      padding: 12px 24px;
+      border-radius: 6px;
+      border: none;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      
+      &.back_button {
+        background: white;
+        color: #333;
+        border: 2px solid #ddd;
+        
+        &:hover {
+          background: #f8f9fa;
+          border-color: #999;
+        }
+      }
+      
+      &.next_button, &.submit_button {
+        background: #5a9b8e;
+        color: white;
+        
+        &:hover {
+          background: #4a8b7e;
+        }
+        
+        &:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 50vh;
+  
+  p {
+    font-size: 18px;
+    color: #666;
+  }
+}
+</style>
