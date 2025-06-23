@@ -117,58 +117,64 @@ erDiagram
     QUESTION_OPTIONS ||--o{ USER_ANSWERS : selected_as
 
     USERS {
-        id bigint PK
-        name string
-        email string UK
-        password string
-        timestamps
+        bigint id PK
+        string name
+        string email UK
+        string password
+        datetime created_at
+        datetime updated_at
     }
     
     QUIZZES {
-        id bigint PK
-        title string
-        description text
-        topic string
-        image_url string
-        is_active boolean
-        timestamps
+        bigint id PK
+        string title
+        text description
+        string topic
+        string image_url
+        boolean is_active
+        datetime created_at
+        datetime updated_at
     }
     
     QUESTIONS {
-        id bigint PK
-        quiz_id bigint FK
-        question_text text
-        question_order int
-        timestamps
+        bigint id PK
+        bigint quiz_id FK
+        text question_text
+        int question_order
+        datetime created_at
+        datetime updated_at
     }
     
     QUESTION_OPTIONS {
-        id bigint PK
-        question_id bigint FK
-        option_text text
-        option_letter char
-        is_correct boolean
-        timestamps
+        bigint id PK
+        bigint question_id FK
+        text option_text
+        char option_letter
+        boolean is_correct
+        datetime created_at
+        datetime updated_at
     }
     
     QUIZ_ATTEMPTS {
-        id bigint PK
-        user_id bigint FK
-        quiz_id bigint FK
-        started_at timestamp
-        completed_at timestamp
-        score int
-        total_questions int
-        timestamps
+        bigint id PK
+        bigint user_id FK
+        bigint quiz_id FK
+        timestamp started_at
+        timestamp completed_at
+        int score
+        int total_questions
+        datetime created_at
+        datetime updated_at
     }
     
     USER_ANSWERS {
-        id bigint PK
-        quiz_attempt_id bigint FK
-        question_id bigint FK
-        selected_option_id bigint FK
-        is_correct boolean
-        timestamps
+        bigint id PK
+        bigint quiz_attempt_id FK
+        bigint question_id FK
+        bigint selected_option_id FK
+        boolean is_correct
+        datetime created_at
+        datetime updated_at
     }
 ```
 
