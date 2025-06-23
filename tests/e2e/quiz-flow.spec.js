@@ -98,7 +98,7 @@ test.describe('Quiz Application - Main Flow', () => {
     // Refresh the page
     await page.reload();
     
-    await expect(page.locator('.question_number')).toContainText('2');
+    await expect(page.locator('.question_number').first()).toContainText('2');
     
     // Can go back and verify first answer is preserved
     await page.click('button.back_button', { hasText: 'Back' });

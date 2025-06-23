@@ -1,4 +1,6 @@
+// client/src/stores/user/index.js
 import { defineStore } from 'pinia'
+import apiService from '@/services/apiService'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -17,27 +19,25 @@ export const useUserStore = defineStore('user', {
     }
   },
   actions: {
-    login(credentials, callback) {
-      // Make API call to login
-      this.apiLogin(credentials)
-        .then(response => {
-          this.loggedIn = true
-          this.user = credentials // Store basic user info
-          
-          // Store in localStorage
-          window.localStorage.setItem('loggedIn', 'true')
-          window.localStorage.setItem('auth_token', response.access_token)
-          window.localStorage.setItem('user', JSON.stringify({
-            email: credentials.email
-          }))
-          
-          // ACTIVATE CALLBACK WITH THE LOGIN STATUS
-          callback(true)
-        })
-        .catch(error => {
-          console.error('Login failed:', error)
-          callback(false, error.message || 'Login failed')
-        })
+    async login(credentials, callback) {
+      try {
+        const response = await apiService.login(credentials)
+        
+        this.loggedIn = true
+        this.user = credentials // Store basic user info
+        
+        // Store in localStorage
+        window.localStorage.setItem('loggedIn', 'true')
+        window.localStorage.setItem('auth_token', response.access_token)
+        window.localStorage.setItem('user', JSON.stringify({
+          email: credentials.email
+        }))
+        
+        callback(true)
+      } catch (error) {
+        console.error('Login failed:', error)
+        callback(false, error.message || 'Login failed')
+      }
     },
 
     // Simple login for fallback (keeping original functionality)
@@ -57,26 +57,9 @@ export const useUserStore = defineStore('user', {
       window.localStorage.removeItem('user')
       
       // Clear quiz state as well
-      window.localStorage.removeItem('quizState')
+      window.localStorage.removeItem('brainpop_quiz_state')
       window.localStorage.removeItem('selectedQuiz')
       window.localStorage.removeItem('attemptId')
-    },
-
-    async apiLogin(credentials) {
-      const response = await fetch('http://localhost:3000/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || 'Login failed')
-      }
-
-      return await response.json()
     }
   }
 })

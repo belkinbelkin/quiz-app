@@ -42,7 +42,7 @@ import QuizSelectionScreen from './selectionScreen/QuizSelectionScreen.vue'
 import QuizStartScreen from './startScreen/QuizStartScreen.vue'
 import QuizQuestionsScreen from './questionsScreen/QuizQuestionsScreen.vue'
 import QuizResultsScreen from './resultsScreen/QuizResultsScreen.vue'
-import { useUserStore } from '@/stores/user'
+import apiService from '@/services/apiService'
 
 const QUIZ_STATES = {
   SELECTION: 'selection',
@@ -97,7 +97,7 @@ export default {
       this.loading = true
       
       try {
-        const attemptStatus = await this.apiCall(`/api/quiz-attempt/${this.attemptId}/status`)
+        const attemptStatus = await apiService.getAttemptStatus(this.attemptId)
         
         if (attemptStatus.is_completed) {
           await this.loadQuizAndGoToResults(quizId)
@@ -114,7 +114,7 @@ export default {
     },
 
     async loadQuizAndResume(quizId) {
-      const quiz = await this.apiCall(`/api/quiz/${quizId}`)
+      const quiz = await apiService.getQuiz(quizId)
       this.selectedQuiz = quiz
       this.quizState = QUIZ_STATES.QUESTIONS
       console.log('Resuming quiz at question index:', this.currentQuestionIndex) // DEBUG
@@ -122,7 +122,7 @@ export default {
     },
 
     async loadQuizAndGoToResults(quizId) {
-      const quiz = await this.apiCall(`/api/quiz/${quizId}`)
+      const quiz = await apiService.getQuiz(quizId)
       this.selectedQuiz = { id: quiz.id, title: quiz.title, topic: quiz.topic }
       
       await this.loadResults()
@@ -149,11 +149,11 @@ export default {
 
       try {
         if (!this.selectedQuiz.questions) {
-          const quizResponse = await this.apiCall(`/api/quiz/${this.selectedQuiz.id}`)
+          const quizResponse = await apiService.getQuiz(this.selectedQuiz.id)
           this.selectedQuiz = quizResponse
         }
 
-        const response = await this.apiCall(`/api/quiz/${this.selectedQuiz.id}/start`, 'POST')
+        const response = await apiService.startQuiz(this.selectedQuiz.id)
         this.attemptId = response.attempt_id
         this.currentQuestionIndex = 0
         this.quizState = QUIZ_STATES.QUESTIONS
@@ -173,7 +173,8 @@ export default {
 
     async handleExistingAttempt() {
       try {
-        const response = await fetch(`http://localhost:3000/api/quiz/${this.selectedQuiz.id}/start`, {
+        // Try to start quiz again to get the existing attempt ID
+        const response = await fetch(`${apiService.baseURL}/api/quiz/${this.selectedQuiz.id}/start`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -237,7 +238,7 @@ export default {
     },
 
     async loadResults() {
-      const results = await this.apiCall(`/api/quiz-attempt/${this.attemptId}/results`)
+      const results = await apiService.getResults(this.attemptId)
       this.results = results
     },
 
@@ -283,36 +284,6 @@ export default {
       } else {
         this.goBackToSelection()
       }
-    },
-
-    async apiCall(endpoint, method = 'GET', data = null) {
-      const token = localStorage.getItem('auth_token')
-      
-      const options = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      }
-
-      if (data) {
-        options.body = JSON.stringify(data)
-      }
-
-      const response = await fetch(`http://localhost:3000${endpoint}`, options)
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          const userStore = useUserStore()
-          userStore.logout()
-          this.$router.push('/login')
-          throw new Error('Authentication expired')
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      return await response.json()
     }
   }
 }

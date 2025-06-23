@@ -58,6 +58,9 @@ import Navigator from '@/components/compositions/navigator/Navigator.vue'
 
 import { useUserStore } from '@/stores/user'
 
+//SERVICES
+import apiService from '@/services/apiService'
+
 export default {
   name: 'QuizSelectionScreen',
   emits: ['selectQuiz'],
@@ -83,8 +86,7 @@ export default {
       this.error = null
       
       try {
-        const response = await this.apiCall('/api/quizzes')
-        this.quizzes = response
+        this.quizzes = await apiService.getQuizzes()
       } catch (err) {
         this.error = 'Failed to load quizzes. Please try again.'
         console.error('Error loading quizzes:', err)
@@ -97,35 +99,6 @@ export default {
       this.$emit('selectQuiz', quiz)
     },
 
-    async apiCall(endpoint, method = 'GET', data = null) {
-      const token = localStorage.getItem('auth_token')
-      
-      const options = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      }
-
-      if (data) {
-        options.body = JSON.stringify(data)
-      }
-
-      const response = await fetch(`http://localhost:3000${endpoint}`, options)
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          const userStore = useUserStore()
-          userStore.logout()
-          this.$router.push('/login')
-          throw new Error('Authentication expired')
-        }
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      return await response.json()
-    }
   }
 }
 </script>
