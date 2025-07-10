@@ -236,30 +236,30 @@ jobs:
             
             # Create batch prompt
             batch_prompt = f"""Please review these {len(batch_content)} code files as a batch for:
-            1. Code quality and best practices
-            2. Potential bugs or security issues  
-            3. Performance improvements
-            4. Code style and maintainability
-            5. Relationships and consistency between files
-            
-            For each file, provide specific feedback. If a file looks good, just say "LGTM" for that file.
-            Focus on the most important issues and how files work together.
-            
-            """
-                        
-                        # Add each file to the prompt
-                        for file_info in batch_content:
-                            batch_prompt += f"""
-            ## File: {file_info['path']}
-            
-            ### Diff:
-            {file_info['diff']}
-            
-            ### Full Content:
-            {file_info['content']}
-            
-            ---
-            """
+        1. Code quality and best practices
+        2. Potential bugs or security issues  
+        3. Performance improvements
+        4. Code style and maintainability
+        5. Relationships and consistency between files
+        
+        For each file, provide specific feedback. If a file looks good, just say "LGTM" for that file.
+        Focus on the most important issues and how files work together.
+        
+        """
+                    
+                    # Add each file to the prompt
+                    for file_info in batch_content:
+                        batch_prompt += f"""
+        ## File: {file_info['path']}
+        
+        ### Diff:
+        {file_info['diff']}
+        
+        ### Full Content:
+        {file_info['content']}
+        
+        ---
+        """
             
             try:
                 print(f"Sending batch {batch_num} to Claude...")
