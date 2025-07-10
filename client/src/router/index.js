@@ -9,6 +9,8 @@ const isLoggedIn = () => {
   return store.isLoggedIn
 }
 
+console.log('TESTING - Calude, do you see the changes?');
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
