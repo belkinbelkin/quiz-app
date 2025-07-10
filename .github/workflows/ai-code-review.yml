@@ -23,18 +23,44 @@ jobs:
 
     - name: Get PR context
       id: pr-context
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         if [ -n "${{ inputs.pr_number }}" ]; then
           echo "pr_number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
           echo "Manual review requested for PR #${{ inputs.pr_number }}"
+          
+          # Get PR details
+          PR_DATA=$(gh pr view ${{ inputs.pr_number }} --json headRefName,baseRefName,headRefOid,baseRefOid)
+          HEAD_BRANCH=$(echo "$PR_DATA" | jq -r '.headRefName')
+          BASE_BRANCH=$(echo "$PR_DATA" | jq -r '.baseRefName')
+          HEAD_SHA=$(echo "$PR_DATA" | jq -r '.headRefOid')
+          BASE_SHA=$(echo "$PR_DATA" | jq -r '.baseRefOid')
+          
+          echo "head_branch=$HEAD_BRANCH" >> $GITHUB_OUTPUT
+          echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          
+          echo "PR #${{ inputs.pr_number }}: $HEAD_BRANCH ($HEAD_SHA) -> $BASE_BRANCH ($BASE_SHA)"
         else
           echo "pr_number=" >> $GITHUB_OUTPUT
           echo "Manual review requested for current branch"
         fi
 
+    - name: Checkout PR branch
+      if: steps.pr-context.outputs.pr_number != ''
+      run: |
+        git fetch origin ${{ steps.pr-context.outputs.head_branch }}
+        git checkout ${{ steps.pr-context.outputs.head_branch }}
+        echo "Checked out PR branch: ${{ steps.pr-context.outputs.head_branch }}"
+
     - name: Get changed files
       id: changed-files
       uses: tj-actions/changed-files@v40
+      with:
+        base_sha: ${{ steps.pr-context.outputs.base_sha || 'HEAD~1' }}
+        sha: ${{ steps.pr-context.outputs.head_sha || 'HEAD' }}
 
     - name: Review code with Claude
       if: steps.changed-files.outputs.any_changed == 'true'
