@@ -3,6 +3,8 @@ import { chromium } from '@playwright/test';
 
 async function globalSetup() {
   console.log('Setting up test environment...');
+
+  //TESTING CODE REVIEW HEY CLAUDE DO YOU SEE IT
   
   // Reset test database and run seeders
   const { execSync } = require('child_process');
