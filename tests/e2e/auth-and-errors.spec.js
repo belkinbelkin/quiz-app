@@ -8,8 +8,11 @@ test.describe('Authentication and Error Handling', () => {
     // await clearBrowserStorage(page);
   });
 
+  // HEY TEST 
+
   test('Login with valid credentials succeeds', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    console.log('here testsing');
     
     // Fill valid credentials
     await page.fill('input.input_field', TEST_USERS.E2E_USER.email);
