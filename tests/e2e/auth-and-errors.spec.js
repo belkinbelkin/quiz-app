@@ -9,6 +9,7 @@ test.describe('Authentication and Error Handling', () => {
   });
 
   // HEY TEST 
+  console.log('Hey test!');
 
   test('Login with valid credentials succeeds', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
