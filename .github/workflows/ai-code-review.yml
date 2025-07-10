@@ -250,16 +250,16 @@ jobs:
             # Add each file to the prompt
             for file_info in batch_content:
                 batch_prompt += f"""
-## File: {file_info['path']}
-
-### Diff:
-{file_info['diff']}
-
-### Full Content:
-{file_info['content']}
-
----
-"""
+            ## File: {file_info['path']}
+            
+            ### Diff:
+            {file_info['diff']}
+            
+            ### Full Content:
+            {file_info['content']}
+            
+            ---
+            """
             
             try:
                 print(f"Sending batch {batch_num} to Claude...")
