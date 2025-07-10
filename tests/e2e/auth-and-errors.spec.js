@@ -8,7 +8,9 @@ test.describe('Authentication and Error Handling', () => {
     // await clearBrowserStorage(page);
   });
 
-  // HEY TEST 
+  // HEY TEST
+
+  console.log('HEY TEST');
 
   test('Login with valid credentials succeeds', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
