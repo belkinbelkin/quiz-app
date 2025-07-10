@@ -51,16 +51,13 @@ jobs:
           **/*.cpp
           **/*.c
           **/*.h
-        base_sha: HEAD~1
-        sha: HEAD
 
     - name: Review code with Claude
-      # if: steps.changed-files.outputs.any_changed == 'true'
+      if: steps.changed-files.outputs.any_changed == 'true'
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        echo os.environ['ANTHROPIC_API_KEY']
         # Install dependencies
         pip install anthropic PyGithub
 
@@ -87,17 +84,24 @@ jobs:
             pr_number = int(pr_number)
             pr = repo.get_pull(pr_number)
             print(f"Manual review for PR #{pr_number}")
+            
+            # For PR reviews, get all changed files in the PR
+            changed_files = [f.filename for f in pr.get_files()]
+            print(f"Found {len(changed_files)} changed files in PR: {changed_files}")
         else:
-            # No PR specified, create a summary comment on latest commit
+            # No PR specified, use the changed files from git diff
             pr = None
+            changed_files = "${{ steps.changed-files.outputs.all_changed_files }}".split()
             print("Manual review for current branch")
-        
-        # Get changed files
-        changed_files = "${{ steps.changed-files.outputs.all_changed_files }}".split()
+            print(f"Found {len(changed_files)} changed files: {changed_files}")
         
         review_comments = []
         
         for file_path in changed_files:
+            # Skip if file path is empty
+            if not file_path or file_path.strip() == "":
+                continue
+                
             if os.path.exists(file_path):
                 with open(file_path, 'r') as f:
                     file_content = f.read()
@@ -147,6 +151,8 @@ jobs:
                         
                 except Exception as e:
                     print(f"Error reviewing {file_path}: {e}")
+            else:
+                print(f"File not found: {file_path}")
         
         # Post review as PR comment or commit comment
         if review_comments:
