@@ -48,6 +48,7 @@ jobs:
           **/*.jsx
           **/*.tsx
           **/*.java
+          **/*.html
           **/*.cpp
           **/*.c
           **/*.h
