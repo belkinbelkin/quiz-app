@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to review (leave empty for latest commit on current branch)'
-        required: false
-        type: string
-      branch:
-        description: 'Branch to review (defaults to current branch)'
+        description: 'PR number to review (leave empty for current branch)'
         required: false
         type: string
 
@@ -35,23 +31,10 @@ jobs:
           echo "pr_number=" >> $GITHUB_OUTPUT
           echo "Manual review requested for current branch"
         fi
-        echo "branch=${{ inputs.branch || github.ref_name }}" >> $GITHUB_OUTPUT
 
     - name: Get changed files
       id: changed-files
       uses: tj-actions/changed-files@v40
-      with:
-        files: |
-          **/*.py
-          **/*.js
-          **/*.ts
-          **/*.jsx
-          **/*.tsx
-          **/*.java
-          **/*.html
-          **/*.cpp
-          **/*.c
-          **/*.h
 
     - name: Review code with Claude
       if: steps.changed-files.outputs.any_changed == 'true'
@@ -102,10 +85,27 @@ jobs:
             # Skip if file path is empty
             if not file_path or file_path.strip() == "":
                 continue
+            
+            # Skip binary files and very large files
+            if file_path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz', '.exe', '.dll', '.so', '.dylib')):
+                print(f"Skipping binary file: {file_path}")
+                continue
                 
             if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
-                    file_content = f.read()
+                try:
+                    # Check file size (skip files over 50KB to avoid token limits)
+                    if os.path.getsize(file_path) > 50000:
+                        print(f"Skipping large file: {file_path}")
+                        continue
+                    
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        file_content = f.read()
+                except UnicodeDecodeError:
+                    print(f"Skipping binary file (unicode error): {file_path}")
+                    continue
+                except Exception as e:
+                    print(f"Error reading {file_path}: {e}")
+                    continue
                 
                 # Get file diff for context
                 try:
