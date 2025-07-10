@@ -57,7 +57,7 @@ jobs:
     - name: Review code with Claude
       if: steps.changed-files.outputs.any_changed == 'true'
       env:
-        ANTHROPIC_API_KEY: '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'
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Install dependencies
