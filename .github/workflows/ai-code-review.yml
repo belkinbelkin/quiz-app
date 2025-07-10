@@ -51,19 +51,31 @@ jobs:
     - name: Checkout PR branch
       if: steps.pr-context.outputs.pr_number != ''
       run: |
+        git fetch origin ${{ steps.pr-context.outputs.base_branch }}
         git fetch origin ${{ steps.pr-context.outputs.head_branch }}
         git checkout ${{ steps.pr-context.outputs.head_branch }}
         echo "Checked out PR branch: ${{ steps.pr-context.outputs.head_branch }}"
+        echo "Will compare against base branch: ${{ steps.pr-context.outputs.base_branch }}"
 
     - name: Get changed files
+      if: steps.pr-context.outputs.pr_number != ''
       id: changed-files
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Get changed files directly from PR API
+        FILES=$(gh pr view ${{ inputs.pr_number }} --json files --jq '.files[].path' | tr '\n' ' ')
+        echo "all_changed_files=$FILES" >> $GITHUB_OUTPUT
+        echo "any_changed=true" >> $GITHUB_OUTPUT
+        echo "Changed files in PR: $FILES"
+
+    - name: Get changed files (branch mode)
+      if: steps.pr-context.outputs.pr_number == ''
+      id: changed-files-branch
       uses: tj-actions/changed-files@v40
-      with:
-        base_sha: ${{ steps.pr-context.outputs.base_sha || 'HEAD~1' }}
-        sha: ${{ steps.pr-context.outputs.head_sha || 'HEAD' }}
 
     - name: Review code with Claude
-      if: steps.changed-files.outputs.any_changed == 'true'
+      if: (steps.changed-files.outputs.any_changed == 'true') || (steps.changed-files-branch.outputs.any_changed == 'true')
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,6 +85,13 @@ jobs:
 
         # Set PR number for the Python script
         echo "PR_NUMBER=${{ steps.pr-context.outputs.pr_number }}" >> $GITHUB_ENV
+        
+        # Set changed files
+        if [ -n "${{ steps.pr-context.outputs.pr_number }}" ]; then
+          echo "CHANGED_FILES=${{ steps.changed-files.outputs.all_changed_files }}" >> $GITHUB_ENV
+        else
+          echo "CHANGED_FILES=${{ steps.changed-files-branch.outputs.all_changed_files }}" >> $GITHUB_ENV
+        fi
         
         # Create review script
         cat > review_code.py << 'EOF'
@@ -96,12 +115,12 @@ jobs:
             print(f"Manual review for PR #{pr_number}")
             
             # For PR reviews, get all changed files in the PR
-            changed_files = [f.filename for f in pr.get_files()]
+            changed_files = os.environ.get('CHANGED_FILES', '').split()
             print(f"Found {len(changed_files)} changed files in PR: {changed_files}")
         else:
             # No PR specified, use the changed files from git diff
             pr = None
-            changed_files = "${{ steps.changed-files.outputs.all_changed_files }}".split()
+            changed_files = os.environ.get('CHANGED_FILES', '').split()
             print("Manual review for current branch")
             print(f"Found {len(changed_files)} changed files: {changed_files}")
         
