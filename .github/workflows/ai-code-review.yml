@@ -86,12 +86,18 @@ jobs:
         # Set PR number for the Python script
         echo "PR_NUMBER=${{ steps.pr-context.outputs.pr_number }}" >> $GITHUB_ENV
         
-        # Set changed files
+        # Set changed files and debug
         if [ -n "${{ steps.pr-context.outputs.pr_number }}" ]; then
-          echo "CHANGED_FILES=${{ steps.changed-files.outputs.all_changed_files }}" >> $GITHUB_ENV
+          CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+          echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+          echo "DEBUG: PR mode, changed files: $CHANGED_FILES"
         else
-          echo "CHANGED_FILES=${{ steps.changed-files-branch.outputs.all_changed_files }}" >> $GITHUB_ENV
+          CHANGED_FILES="${{ steps.changed-files-branch.outputs.all_changed_files }}"
+          echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+          echo "DEBUG: Branch mode, changed files: $CHANGED_FILES"
         fi
+        
+        echo "DEBUG: Environment variable set to: $CHANGED_FILES"
         
         # Create review script
         cat > review_code.py << 'EOF'
@@ -109,18 +115,23 @@ jobs:
         
         # Handle manual dispatch
         pr_number = os.environ.get('PR_NUMBER')
+        changed_files_str = os.environ.get('CHANGED_FILES', '')
+        
+        print(f"DEBUG: PR_NUMBER = {pr_number}")
+        print(f"DEBUG: CHANGED_FILES = '{changed_files_str}'")
+        
         if pr_number:
             pr_number = int(pr_number)
             pr = repo.get_pull(pr_number)
             print(f"Manual review for PR #{pr_number}")
             
-            # For PR reviews, get all changed files in the PR
-            changed_files = os.environ.get('CHANGED_FILES', '').split()
+            # Get changed files from environment variable
+            changed_files = [f.strip() for f in changed_files_str.split() if f.strip()]
             print(f"Found {len(changed_files)} changed files in PR: {changed_files}")
         else:
             # No PR specified, use the changed files from git diff
             pr = None
-            changed_files = os.environ.get('CHANGED_FILES', '').split()
+            changed_files = [f.strip() for f in changed_files_str.split() if f.strip()]
             print("Manual review for current branch")
             print(f"Found {len(changed_files)} changed files: {changed_files}")
         
