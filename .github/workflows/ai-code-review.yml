@@ -1,4 +1,4 @@
-name: AI Code Review
+name: AI Code Review (Batched)
 
 on:
   workflow_dispatch:
@@ -7,6 +7,11 @@ on:
         description: 'PR number to review (leave empty for current branch)'
         required: false
         type: string
+      batch_size:
+        description: 'Number of files to review per batch (default: 5)'
+        required: false
+        type: string
+        default: '5'
 
 jobs:
   ai-code-review:
@@ -74,7 +79,7 @@ jobs:
       id: changed-files-branch
       uses: tj-actions/changed-files@v40
 
-    - name: Review code with Claude
+    - name: Review code with Claude (Batched)
       if: (steps.changed-files.outputs.any_changed == 'true') || (steps.changed-files-branch.outputs.any_changed == 'true')
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -83,12 +88,9 @@ jobs:
         # Install dependencies
         pip install anthropic PyGithub
 
-        
-        # Set PR number for the Python script
-        echo "PR_NUMBER=${{ steps.pr-context.outputs.pr_number }}" >> $GITHUB_ENV
-        
         # Set environment variables for Python script
         export PR_NUMBER="${{ steps.pr-context.outputs.pr_number }}"
+        export BATCH_SIZE="${{ inputs.batch_size }}"
         if [ -n "${{ steps.pr-context.outputs.pr_number }}" ]; then
           export CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
           echo "DEBUG: PR mode, changed files: $CHANGED_FILES"
@@ -97,12 +99,12 @@ jobs:
           echo "DEBUG: Branch mode, changed files: $CHANGED_FILES"
         fi
         
-        echo "DEBUG: Environment variable set to: $CHANGED_FILES"
-        echo "DEBUG: PR_NUMBER set to: $PR_NUMBER"
+        echo "DEBUG: Batch size: $BATCH_SIZE"
         
-        # Create review script with values passed directly
+        # Create batched review script
         cat > review_code.py << EOF
         import os
+        import math
         import anthropic
         from github import Github
         
@@ -110,9 +112,10 @@ jobs:
         client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
         github_client = Github(os.environ['GITHUB_TOKEN'])
         
-        # Get PR context - values passed directly from shell
+        # Get configuration
         repo_name = os.environ['GITHUB_REPOSITORY']
         repo = github_client.get_repo(repo_name)
+        batch_size = int(os.environ.get('BATCH_SIZE', '5'))
         
         # Handle manual dispatch
         pr_number = "${{ steps.pr-context.outputs.pr_number }}"
@@ -123,102 +126,164 @@ jobs:
         
         print(f"DEBUG: PR_NUMBER = '{pr_number}'")
         print(f"DEBUG: CHANGED_FILES = '{changed_files_str}'")
+        print(f"DEBUG: BATCH_SIZE = {batch_size}")
         
         if pr_number:
             pr_number = int(pr_number)
             pr = repo.get_pull(pr_number)
             print(f"Manual review for PR #{pr_number}")
-            
-            # Get changed files from direct substitution
-            changed_files = [f.strip() for f in changed_files_str.split() if f.strip()]
-            print(f"Found {len(changed_files)} changed files in PR: {changed_files}")
         else:
-            # No PR specified, use the changed files from git diff
             pr = None
-            changed_files = [f.strip() for f in changed_files_str.split() if f.strip()]
             print("Manual review for current branch")
-            print(f"Found {len(changed_files)} changed files: {changed_files}")
         
-        review_comments = []
+        # Get changed files and filter them
+        all_changed_files = [f.strip() for f in changed_files_str.split() if f.strip()]
+        print(f"Found {len(all_changed_files)} total changed files")
         
-        for file_path in changed_files:
-            # Skip if file path is empty
-            if not file_path or file_path.strip() == "":
+        # Filter files (skip binary, large files, etc.)
+        reviewable_files = []
+        for file_path in all_changed_files:
+            if not file_path:
                 continue
             
-            # Skip binary files and very large files
+            # Skip binary files
             if file_path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz', '.exe', '.dll', '.so', '.dylib')):
                 print(f"Skipping binary file: {file_path}")
                 continue
+            
+            if not os.path.exists(file_path):
+                print(f"File not found: {file_path}")
+                continue
+            
+            try:
+                # Check file size
+                if os.path.getsize(file_path) > 50000:
+                    print(f"Skipping large file: {file_path}")
+                    continue
                 
-            if os.path.exists(file_path):
+                # Test if file is readable
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    f.read(100)  # Just test first 100 chars
+                
+                reviewable_files.append(file_path)
+                
+            except UnicodeDecodeError:
+                print(f"Skipping binary file (unicode error): {file_path}")
+                continue
+            except Exception as e:
+                print(f"Error checking {file_path}: {e}")
+                continue
+        
+        print(f"Reviewable files: {reviewable_files}")
+        
+        # Split files into batches
+        batches = []
+        for i in range(0, len(reviewable_files), batch_size):
+            batch = reviewable_files[i:i + batch_size]
+            batches.append(batch)
+        
+        print(f"Created {len(batches)} batches of up to {batch_size} files each")
+        
+        all_review_comments = []
+        
+        # Process each batch
+        for batch_num, batch_files in enumerate(batches, 1):
+            print(f"\n=== Processing Batch {batch_num}/{len(batches)} ===")
+            print(f"Files in batch: {batch_files}")
+            
+            # Prepare batch content
+            batch_content = []
+            total_tokens_estimate = 0
+            
+            for file_path in batch_files:
                 try:
-                    # Check file size (skip files over 50KB to avoid token limits)
-                    if os.path.getsize(file_path) > 50000:
-                        print(f"Skipping large file: {file_path}")
-                        continue
-                    
                     with open(file_path, 'r', encoding='utf-8') as f:
                         file_content = f.read()
-                except UnicodeDecodeError:
-                    print(f"Skipping binary file (unicode error): {file_path}")
-                    continue
+                    
+                    # Get file diff for context
+                    file_diff = ""
+                    if pr:
+                        try:
+                            for file in pr.get_files():
+                                if file.filename == file_path:
+                                    file_diff = file.patch or ""
+                                    break
+                        except:
+                            pass
+                    
+                    # Estimate tokens (rough: 1 token ≈ 4 characters)
+                    file_tokens = len(file_content) // 4 + len(file_diff) // 4
+                    total_tokens_estimate += file_tokens
+                    
+                    # Add to batch
+                    batch_content.append({
+                        'path': file_path,
+                        'content': file_content,
+                        'diff': file_diff,
+                        'tokens': file_tokens
+                    })
+                    
                 except Exception as e:
                     print(f"Error reading {file_path}: {e}")
                     continue
+            
+            print(f"Batch {batch_num} token estimate: ~{total_tokens_estimate:,} tokens")
+            
+            # Skip if batch is too large (>180k tokens ≈ 45k chars per file avg)
+            if total_tokens_estimate > 180000:
+                print(f"Skipping batch {batch_num} - too large ({total_tokens_estimate:,} tokens)")
+                continue
+            
+            # Create batch prompt
+            batch_prompt = f"""Please review these {len(batch_content)} code files as a batch for:
+1. Code quality and best practices
+2. Potential bugs or security issues  
+3. Performance improvements
+4. Code style and maintainability
+5. Relationships and consistency between files
+
+For each file, provide specific feedback. If a file looks good, just say "LGTM" for that file.
+Focus on the most important issues and how files work together.
+
+"""
+            
+            # Add each file to the prompt
+            for file_info in batch_content:
+                batch_prompt += f"""
+## File: {file_info['path']}
+
+### Diff:
+{file_info['diff']}
+
+### Full Content:
+{file_info['content']}
+
+---
+"""
+            
+            try:
+                print(f"Sending batch {batch_num} to Claude...")
+                response = client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=3000,  # Increased for batch responses
+                    messages=[{"role": "user", "content": batch_prompt}]
+                )
                 
-                # Get file diff for context
-                try:
-                    file_diff = ""
-                    if pr:
-                        for file in pr.get_files():
-                            if file.filename == file_path:
-                                file_diff = file.patch or ""
-                                break
-                except:
-                    file_diff = ""
+                review_content = response.content[0].text
+                print(f"Received response for batch {batch_num}")
                 
-                # Review with Claude
-                prompt = f"""
-                Please review this code file for:
-                1. Code quality and best practices
-                2. Potential bugs or security issues
-                3. Performance improvements
-                4. Code style and maintainability
+                # Only add to comments if there are actual issues (not just LGTM)
+                if not all(keyword in review_content.upper() for keyword in ['LGTM'] * len(batch_files)):
+                    all_review_comments.append(f"## 🤖 AI Review: Batch {batch_num} ({', '.join(batch_files)})\n\n{review_content}")
                 
-                File: {file_path}
-                
-                Diff:
-                {file_diff}
-                
-                Full file content:
-                {file_content}
-                
-                Please provide specific, actionable feedback. If the code looks good, just say "LGTM" (Looks Good To Me).
-                Focus on the most important issues only.
-                """
-                
-                try:
-                    response = client.messages.create(
-                        model="claude-3-5-sonnet-20241022",
-                        max_tokens=1000,
-                        messages=[{"role": "user", "content": prompt}]
-                    )
-                    
-                    review_content = response.content[0].text
-                    
-                    if "LGTM" not in review_content:
-                        review_comments.append(f"## 🤖 AI Review: {file_path}\n\n{review_content}")
-                        
-                except Exception as e:
-                    print(f"Error reviewing {file_path}: {e}")
-            else:
-                print(f"File not found: {file_path}")
+            except Exception as e:
+                print(f"Error reviewing batch {batch_num}: {e}")
+                continue
         
-        # Post review as PR comment or commit comment
-        if review_comments:
-            comment_body = "## 🤖 AI Code Review\n\n" + "\n\n---\n\n".join(review_comments)
-            comment_body += "\n\n*This review was generated by Claude. Please verify suggestions before implementing.*"
+        # Post review comments
+        if all_review_comments:
+            comment_body = "## 🤖 AI Code Review (Batched)\n\n" + "\n\n---\n\n".join(all_review_comments)
+            comment_body += f"\n\n*This review was generated by Claude in {len(batches)} batches. Please verify suggestions before implementing.*"
             
             if pr:
                 # Post to PR
@@ -230,22 +295,27 @@ jobs:
                 
                 if existing_comment:
                     existing_comment.edit(comment_body)
+                    print("Updated existing PR comment")
                 else:
                     pr.create_issue_comment(comment_body)
+                    print("Created new PR comment")
             else:
-                # Post to commit (for manual reviews without PR)
+                # Post to commit
                 commit_sha = os.environ['GITHUB_SHA']
                 commit = repo.get_commit(commit_sha)
                 commit.create_comment(comment_body)
+                print("Posted comment to commit")
         else:
-            print("No significant issues found in the code review.")
+            print("No significant issues found in any batch - no comment posted")
+        
+        print(f"\nBatched review completed: {len(batches)} batches, {len(reviewable_files)} files total")
         
         EOF
         
-        # Run the review
+        # Run the batched review
         python review_code.py
 
     - name: Summary
       if: always()
       run: |
-        echo "Manual AI code review completed"
+        echo "Batched AI code review completed"
