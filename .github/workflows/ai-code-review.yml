@@ -55,11 +55,12 @@ jobs:
         sha: HEAD
 
     - name: Review code with Claude
-      if: steps.changed-files.outputs.any_changed == 'true'
+      # if: steps.changed-files.outputs.any_changed == 'true'
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        echo os.environ['ANTHROPIC_API_KEY']
         # Install dependencies
         pip install anthropic PyGithub
 
