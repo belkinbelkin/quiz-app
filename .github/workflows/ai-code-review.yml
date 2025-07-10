@@ -83,24 +83,25 @@ jobs:
         # Install dependencies
         pip install anthropic PyGithub
 
+        
         # Set PR number for the Python script
         echo "PR_NUMBER=${{ steps.pr-context.outputs.pr_number }}" >> $GITHUB_ENV
         
-        # Set changed files and debug
+        # Set environment variables for Python script
+        export PR_NUMBER="${{ steps.pr-context.outputs.pr_number }}"
         if [ -n "${{ steps.pr-context.outputs.pr_number }}" ]; then
-          CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
-          echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+          export CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
           echo "DEBUG: PR mode, changed files: $CHANGED_FILES"
         else
-          CHANGED_FILES="${{ steps.changed-files-branch.outputs.all_changed_files }}"
-          echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+          export CHANGED_FILES="${{ steps.changed-files-branch.outputs.all_changed_files }}"
           echo "DEBUG: Branch mode, changed files: $CHANGED_FILES"
         fi
         
         echo "DEBUG: Environment variable set to: $CHANGED_FILES"
+        echo "DEBUG: PR_NUMBER set to: $PR_NUMBER"
         
-        # Create review script
-        cat > review_code.py << 'EOF'
+        # Create review script with values passed directly
+        cat > review_code.py << EOF
         import os
         import anthropic
         from github import Github
@@ -109,15 +110,18 @@ jobs:
         client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
         github_client = Github(os.environ['GITHUB_TOKEN'])
         
-        # Get PR context
+        # Get PR context - values passed directly from shell
         repo_name = os.environ['GITHUB_REPOSITORY']
         repo = github_client.get_repo(repo_name)
         
         # Handle manual dispatch
-        pr_number = os.environ.get('PR_NUMBER')
-        changed_files_str = os.environ.get('CHANGED_FILES', '')
+        pr_number = "${{ steps.pr-context.outputs.pr_number }}"
+        if pr_number:
+            changed_files_str = "${{ steps.changed-files.outputs.all_changed_files }}"
+        else:
+            changed_files_str = "${{ steps.changed-files-branch.outputs.all_changed_files }}"
         
-        print(f"DEBUG: PR_NUMBER = {pr_number}")
+        print(f"DEBUG: PR_NUMBER = '{pr_number}'")
         print(f"DEBUG: CHANGED_FILES = '{changed_files_str}'")
         
         if pr_number:
@@ -125,7 +129,7 @@ jobs:
             pr = repo.get_pull(pr_number)
             print(f"Manual review for PR #{pr_number}")
             
-            # Get changed files from environment variable
+            # Get changed files from direct substitution
             changed_files = [f.strip() for f in changed_files_str.split() if f.strip()]
             print(f"Found {len(changed_files)} changed files in PR: {changed_files}")
         else:
