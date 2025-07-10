@@ -10,6 +10,7 @@ test.describe('Authentication and Error Handling', () => {
 
   console.log('HEY TEST');
   console.log('HEY TEST2');
+  console.log('HEY TEST3');
 
 
   test('Login with valid credentials succeeds', async ({ page }) => {
