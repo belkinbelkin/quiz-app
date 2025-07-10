@@ -1,0 +1,183 @@
+name: AI Code Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review (leave empty for latest commit on current branch)'
+        required: false
+        type: string
+      branch:
+        description: 'Branch to review (defaults to current branch)'
+        required: false
+        type: string
+
+jobs:
+  ai-code-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get PR context
+      id: pr-context
+      run: |
+        if [ -n "${{ inputs.pr_number }}" ]; then
+          echo "pr_number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+          echo "Manual review requested for PR #${{ inputs.pr_number }}"
+        else
+          echo "pr_number=" >> $GITHUB_OUTPUT
+          echo "Manual review requested for current branch"
+        fi
+        echo "branch=${{ inputs.branch || github.ref_name }}" >> $GITHUB_OUTPUT
+
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v40
+      with:
+        files: |
+          **/*.py
+          **/*.js
+          **/*.ts
+          **/*.jsx
+          **/*.tsx
+          **/*.java
+          **/*.cpp
+          **/*.c
+          **/*.h
+        base_sha: HEAD~1
+        sha: HEAD
+
+    - name: Review code with Claude
+      if: steps.changed-files.outputs.any_changed == 'true'
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Install dependencies
+        pip install anthropic PyGithub
+
+        # Set PR number for the Python script
+        echo "PR_NUMBER=${{ steps.pr-context.outputs.pr_number }}" >> $GITHUB_ENV
+        
+        # Create review script
+        cat > review_code.py << 'EOF'
+        import os
+        import anthropic
+        from github import Github
+        
+        # Initialize clients
+        client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+        github_client = Github(os.environ['GITHUB_TOKEN'])
+        
+        # Get PR context
+        repo_name = os.environ['GITHUB_REPOSITORY']
+        repo = github_client.get_repo(repo_name)
+        
+        # Handle manual dispatch
+        pr_number = os.environ.get('PR_NUMBER')
+        if pr_number:
+            pr_number = int(pr_number)
+            pr = repo.get_pull(pr_number)
+            print(f"Manual review for PR #{pr_number}")
+        else:
+            # No PR specified, create a summary comment on latest commit
+            pr = None
+            print("Manual review for current branch")
+        
+        # Get changed files
+        changed_files = "${{ steps.changed-files.outputs.all_changed_files }}".split()
+        
+        review_comments = []
+        
+        for file_path in changed_files:
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    file_content = f.read()
+                
+                # Get file diff for context
+                try:
+                    file_diff = ""
+                    if pr:
+                        for file in pr.get_files():
+                            if file.filename == file_path:
+                                file_diff = file.patch or ""
+                                break
+                except:
+                    file_diff = ""
+                
+                # Review with Claude
+                prompt = f"""
+                Please review this code file for:
+                1. Code quality and best practices
+                2. Potential bugs or security issues
+                3. Performance improvements
+                4. Code style and maintainability
+                
+                File: {file_path}
+                
+                Diff:
+                {file_diff}
+                
+                Full file content:
+                {file_content}
+                
+                Please provide specific, actionable feedback. If the code looks good, just say "LGTM" (Looks Good To Me).
+                Focus on the most important issues only.
+                """
+                
+                try:
+                    response = client.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=1000,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    
+                    review_content = response.content[0].text
+                    
+                    if "LGTM" not in review_content:
+                        review_comments.append(f"## 🤖 AI Review: {file_path}\n\n{review_content}")
+                        
+                except Exception as e:
+                    print(f"Error reviewing {file_path}: {e}")
+        
+        # Post review as PR comment or commit comment
+        if review_comments:
+            comment_body = "## 🤖 AI Code Review\n\n" + "\n\n---\n\n".join(review_comments)
+            comment_body += "\n\n*This review was generated by Claude. Please verify suggestions before implementing.*"
+            
+            if pr:
+                # Post to PR
+                existing_comment = None
+                for comment in pr.get_issue_comments():
+                    if comment.user.login == "github-actions[bot]" and "🤖 AI Code Review" in comment.body:
+                        existing_comment = comment
+                        break
+                
+                if existing_comment:
+                    existing_comment.edit(comment_body)
+                else:
+                    pr.create_issue_comment(comment_body)
+            else:
+                # Post to commit (for manual reviews without PR)
+                commit_sha = os.environ['GITHUB_SHA']
+                commit = repo.get_commit(commit_sha)
+                commit.create_comment(comment_body)
+        else:
+            print("No significant issues found in the code review.")
+        
+        EOF
+        
+        # Run the review
+        python review_code.py
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "Manual AI code review completed"
